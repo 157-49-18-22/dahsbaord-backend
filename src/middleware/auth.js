@@ -33,8 +33,12 @@ const protect = async (req, res, next) => {
  * Admin only middleware
  */
 const adminOnly = (req, res, next) => {
-  if (!req.agent.role || !req.agent.role.toLowerCase().includes("admin")) {
-    return res.status(403).json({ success: false, message: "Admin access required" });
+  if (
+    !req.agent.role ||
+    (!req.agent.role.toLowerCase().includes("admin") &&
+     !req.agent.role.toLowerCase().includes("senior"))
+  ) {
+    return res.status(403).json({ success: false, message: "Admin or Senior access required" });
   }
   next();
 };

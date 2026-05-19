@@ -75,15 +75,21 @@ const updateAgent = async (req, res) => {
       updates.password = await bcrypt.hash(updates.password, 10);
     }
 
-    const updated = await Agent.updateById(id, updates);
-    if (!updated) return res.status(404).json({ success: false, message: "Agent not found" });
+    const [affectedCount] = await Agent.update(updates, { where: { id } });
+    if (affectedCount === 0) {
+      // Check if agent exists even if no rows were updated
+      const exists = await Agent.findByPk(id);
+      if (!exists) return res.status(404).json({ success: false, message: "Agent not found" });
+    }
 
-    const data = updated.toJSON();
+    const updatedAgent = await Agent.findByPk(id);
+    const data = updatedAgent.toJSON();
     delete data.password;
     try { getIO().emit("agent:updated", data); } catch {}
 
     res.json({ success: true, message: "Agent updated", agent: data });
   } catch (err) {
+    console.error("Update agent error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
