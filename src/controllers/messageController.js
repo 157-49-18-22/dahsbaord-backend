@@ -11,6 +11,59 @@ const toPreviewText = (messageType, text) => {
   return text;
 };
 
+const postWhatsAppPayload = async (axios, apiURL, apiKey, endpoint, payload) => {
+  const apiRes = await axios.post(`${apiURL}/${endpoint}`, payload, {
+    headers: {
+      "x-api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+  });
+  const failed = apiRes?.data && String(apiRes.data.success) === "-1";
+  if (failed) {
+    throw new Error(apiRes.data.message || "Failed to send WhatsApp message");
+  }
+  return apiRes;
+};
+
+const sendViaAlponix = async ({ axios, apiURL, apiKey, recipient, messageType, text, attachmentUrl, fileName }) => {
+  if (messageType === "text" || !attachmentUrl) {
+    return postWhatsAppPayload(axios, apiURL, apiKey, "whatsapp-message", {
+      send_to: recipient,
+      message: text,
+    });
+  }
+
+  const mediaType = messageType === "image" ? "image" : "document";
+  const mediaCandidates = [
+    {
+      endpoint: "whatsapp-media-message",
+      payload: { send_to: recipient, message_type: mediaType, media_url: attachmentUrl, caption: text || "" },
+    },
+    {
+      endpoint: "whatsapp-media-message",
+      payload: { send_to: recipient, media_type: mediaType, media: attachmentUrl, caption: text || "", file_name: fileName || "" },
+    },
+    {
+      endpoint: "whatsapp-message-media",
+      payload: { send_to: recipient, type: mediaType, url: attachmentUrl, caption: text || "" },
+    },
+    {
+      endpoint: "whatsapp-message",
+      payload: { send_to: recipient, message_type: mediaType, message: attachmentUrl, caption: text || "" },
+    },
+  ];
+
+  let lastErr = null;
+  for (const candidate of mediaCandidates) {
+    try {
+      return await postWhatsAppPayload(axios, apiURL, apiKey, candidate.endpoint, candidate.payload);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error("Media sending failed");
+};
+
 // GET /api/queries/:queryId/messages
 const getMessages = async (req, res) => {
   try {
@@ -49,36 +102,18 @@ const sendMessage = async (req, res) => {
     if (recipient.length === 10) recipient = '91' + recipient;
 
     try {
-      const payload = {
-        send_to: recipient,
-        message: attachmentUrl || text
-      };
-      
-      const apiRes = await axios.post(`${apiURL}/whatsapp-message`, payload, {
-        headers: {
-          'x-api-key': apiKey,
-          'Content-Type': 'application/json'
-        }
+      const apiRes = await sendViaAlponix({
+        axios,
+        apiURL,
+        apiKey,
+        recipient,
+        messageType,
+        text,
+        attachmentUrl,
+        fileName,
       });
 
       console.log(`✅ WhatsApp direct message sent to: ${recipient}, Response:`, apiRes.data);
-
-      if (apiRes.data && apiRes.data.success === "-1") {
-        const errMsg = apiRes.data.message || "";
-        if (errMsg.toLowerCase().includes("session") || errMsg.toLowerCase().includes("active")) {
-          return res.status(400).json({
-            success: false,
-            errorType: "SESSION_EXPIRED",
-            message: "No active session found for this number. Please send an approved WhatsApp Template to initiate the conversation."
-          });
-        } else {
-          return res.status(400).json({
-            success: false,
-            message: apiRes.data.message || "Failed to send WhatsApp message"
-          });
-        }
-      }
-
     } catch (apiErr) {
       const errorData = apiErr.response?.data;
       console.error("❌ WhatsApp Direct Message API Error:", errorData || apiErr.message);
