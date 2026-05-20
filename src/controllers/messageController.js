@@ -18,8 +18,17 @@ const postWhatsAppPayload = async (axios, apiURL, apiKey, endpoint, payload) => 
       "Content-Type": "application/json",
     },
   });
-  const failed = apiRes?.data && String(apiRes.data.success) === "-1";
-  if (failed) {
+  const responseData = apiRes?.data || {};
+  const successFlag = String(responseData.success ?? "");
+  const messageText = String(responseData.message || "").toLowerCase();
+  const statusOk = apiRes.status >= 200 && apiRes.status < 300;
+  const looksSuccessful =
+    successFlag === "1" ||
+    messageText.includes("successfully sent") ||
+    messageText.includes("message sent");
+
+  const failed = successFlag === "-1" && !looksSuccessful;
+  if ((failed || !statusOk) && !looksSuccessful) {
     throw new Error(apiRes.data.message || "Failed to send WhatsApp message");
   }
   return apiRes;
@@ -113,6 +122,9 @@ const sendMessage = async (req, res) => {
       console.error("❌ WhatsApp Direct Message API Error:", errorData || apiErr.message);
       
       const errMsg = errorData?.message || apiErr.message || "";
+      if (String(errMsg).toLowerCase().includes("template successfully sent")) {
+        // Alponix can return inconsistent wrappers; treat this as success.
+      } else {
       if (errMsg.toLowerCase().includes("session") || errMsg.toLowerCase().includes("active")) {
         return res.status(400).json({
           success: false,
@@ -124,6 +136,7 @@ const sendMessage = async (req, res) => {
         success: false,
         message: errMsg || "Failed to send WhatsApp message"
       });
+      }
     }
     // --------------------------------------------------------
 
