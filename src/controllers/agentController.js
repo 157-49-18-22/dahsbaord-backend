@@ -71,18 +71,32 @@ const updateAgent = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
+    // Role-based authorization:
+    // Non-admin agents can only update their own profile
+    const isAdmin =
+      req.agent.role &&
+      (req.agent.role.toLowerCase().includes("admin") ||
+        req.agent.role.toLowerCase().includes("senior"));
+
+    if (!isAdmin && req.agent.id !== id) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only update your own profile",
+      });
+    }
+
     if (updates.password) {
+      if (updates.password.length < 6) {
+        return res.status(400).json({ success: false, message: "Password must be at least 6 characters" });
+      }
       updates.password = await bcrypt.hash(updates.password, 10);
     }
 
-    const [affectedCount] = await Agent.update(updates, { where: { id } });
-    if (affectedCount === 0) {
-      // Check if agent exists even if no rows were updated
-      const exists = await Agent.findByPk(id);
-      if (!exists) return res.status(404).json({ success: false, message: "Agent not found" });
-    }
+    await Agent.updateById(id, updates);
 
     const updatedAgent = await Agent.findByPk(id);
+    if (!updatedAgent) return res.status(404).json({ success: false, message: "Agent not found" });
+
     const data = updatedAgent.toJSON();
     delete data.password;
     try { getIO().emit("agent:updated", data); } catch {}
@@ -90,6 +104,29 @@ const updateAgent = async (req, res) => {
     res.json({ success: true, message: "Agent updated", agent: data });
   } catch (err) {
     console.error("Update agent error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// PATCH /api/agents/:id/reset-password  — admin/senior only
+const resetAgentPassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: "New password must be at least 6 characters" });
+    }
+
+    const agent = await Agent.findByPk(id);
+    if (!agent) return res.status(404).json({ success: false, message: "Agent not found" });
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await Agent.updateById(id, { password: hashedPassword });
+
+    res.json({ success: true, message: `Password for ${agent.name} has been reset successfully` });
+  } catch (err) {
+    console.error("Reset password error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -154,4 +191,5 @@ module.exports = {
   updateAgentStatus,
   deleteAgent,
   getAgentStats,
+  resetAgentPassword,
 };

@@ -8,6 +8,7 @@ const {
   updateAgentStatus,
   deleteAgent,
   getAgentStats,
+  resetAgentPassword,
 } = require("../controllers/agentController");
 const { protect, adminOnly } = require("../middleware/auth");
 const { validate } = require("../middleware/validate");
@@ -52,5 +53,16 @@ router.patch(
 
 // DELETE /api/agents/:id  — admin only
 router.delete("/:id", adminOnly, deleteAgent);
+
+// PATCH /api/agents/:id/reset-password  — admin/senior only
+router.patch(
+  "/:id/reset-password",
+  adminOnly,
+  [
+    body("newPassword").isLength({ min: 6 }).withMessage("Password must be at least 6 characters"),
+  ],
+  validate,
+  resetAgentPassword
+);
 
 module.exports = router;
