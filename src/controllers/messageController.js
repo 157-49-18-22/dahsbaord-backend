@@ -35,21 +35,22 @@ const sendViaAlponix = async ({ axios, apiURL, apiKey, recipient, messageType, t
 
   const mediaType = messageType === "image" ? "image" : "document";
   const mediaCandidates = [
+    // Alponix usually supports only /whatsapp-message, with different media keys by setup.
     {
-      endpoint: messageType === "image" ? "whatsapp-image-message" : "whatsapp-document-message",
-      payload: { send_to: recipient, media_url: attachmentUrl, caption: text || "", file_name: fileName || "" },
-    },
-    {
-      endpoint: "whatsapp-media-message",
+      endpoint: "whatsapp-message",
       payload: { send_to: recipient, message_type: mediaType, media_url: attachmentUrl, caption: text || "" },
     },
     {
-      endpoint: "whatsapp-media-message",
+      endpoint: "whatsapp-message",
+      payload: { send_to: recipient, type: mediaType, url: attachmentUrl, caption: text || "" },
+    },
+    {
+      endpoint: "whatsapp-message",
       payload: { send_to: recipient, media_type: mediaType, media: attachmentUrl, caption: text || "", file_name: fileName || "" },
     },
     {
-      endpoint: "whatsapp-message-media",
-      payload: { send_to: recipient, type: mediaType, url: attachmentUrl, caption: text || "" },
+      endpoint: "whatsapp-message",
+      payload: { send_to: recipient, [mediaType]: attachmentUrl, caption: text || "" },
     },
   ];
 
