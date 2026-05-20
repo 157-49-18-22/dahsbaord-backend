@@ -33,38 +33,29 @@ const sendViaAlponix = async ({ axios, apiURL, apiKey, recipient, messageType, t
     });
   }
 
-  const mediaType = messageType === "image" ? "image" : "document";
-  const mediaCandidates = [
-    // Alponix usually supports only /whatsapp-message, with different media keys by setup.
-    {
-      endpoint: "whatsapp-message",
-      payload: { send_to: recipient, message_type: mediaType, media_url: attachmentUrl, caption: text || "" },
-    },
-    {
-      endpoint: "whatsapp-message",
-      payload: { send_to: recipient, type: mediaType, url: attachmentUrl, caption: text || "" },
-    },
-    {
-      endpoint: "whatsapp-message",
-      payload: { send_to: recipient, media_type: mediaType, media: attachmentUrl, caption: text || "", file_name: fileName || "" },
-    },
-    {
-      endpoint: "whatsapp-message",
-      payload: { send_to: recipient, [mediaType]: attachmentUrl, caption: text || "" },
-    },
-  ];
-
-  let lastErr = null;
-  for (const candidate of mediaCandidates) {
-    try {
-      console.log(`📤 Trying media endpoint ${candidate.endpoint} for ${mediaType}`);
-      return await postWhatsAppPayload(axios, apiURL, apiKey, candidate.endpoint, candidate.payload);
-    } catch (err) {
-      console.warn(`⚠️ Media endpoint failed: ${candidate.endpoint} -> ${err.message}`);
-      lastErr = err;
-    }
+  // Alponix docs: media is supported via template API header (IMAGE/VIDEO/TEXT),
+  // not direct whatsapp-message endpoint.
+  if (messageType === "image") {
+    const imageTemplateName = process.env.WHATSAPP_IMAGE_TEMPLATE_NAME || "order_confirmation12";
+    const payload = {
+      send_to: recipient,
+      template_name: imageTemplateName,
+      header: {
+        type: "IMAGE",
+        url: attachmentUrl,
+      },
+      variables: {
+        "1": text?.trim() || "Attachment",
+      },
+    };
+    return postWhatsAppPayload(axios, apiURL, apiKey, "message-template", payload);
   }
-  throw lastErr || new Error("Media sending failed. Provider media API not available.");
+
+  // If document template is not configured, send URL as text fallback.
+  return postWhatsAppPayload(axios, apiURL, apiKey, "whatsapp-message", {
+    send_to: recipient,
+    message: attachmentUrl || fileName || text || "Document shared",
+  });
 };
 
 // GET /api/queries/:queryId/messages
