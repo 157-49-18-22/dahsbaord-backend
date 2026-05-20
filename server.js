@@ -19,6 +19,7 @@ const webhookRoutes  = require("./src/routes/webhook");
 
 const app = express();
 const httpServer = http.createServer(app);
+const path = require("path");
 
 // ─── Socket.io ────────────────────────────────────────────────
 initSocket(httpServer);
@@ -33,6 +34,7 @@ app.use(cors({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 if (process.env.NODE_ENV !== "test") {
   app.use(morgan("dev"));

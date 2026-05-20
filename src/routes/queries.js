@@ -57,7 +57,16 @@ router.get("/:queryId/messages", getMessages);
 // POST /api/queries/:queryId/messages  — agent sends message
 router.post(
   "/:queryId/messages",
-  [body("text").notEmpty().withMessage("Message text required")],
+  [
+    body().custom((value) => {
+      const hasText = Boolean(value?.text && String(value.text).trim());
+      const hasAttachment = Boolean(value?.attachmentUrl && String(value.attachmentUrl).trim());
+      if (!hasText && !hasAttachment) {
+        throw new Error("Message text or attachmentUrl required");
+      }
+      return true;
+    }),
+  ],
   validate,
   sendMessage
 );

@@ -5,6 +5,12 @@ const ActivityLog = require("../models/ActivityLog");
 const Agent = require("../models/Agent");
 const { getIO } = require("../config/socket");
 
+const toPreviewText = (messageType, text) => {
+  if (messageType === "image") return "[Image]";
+  if (messageType === "document") return "[Document]";
+  return text;
+};
+
 // GET /api/queries/:queryId/messages
 const getMessages = async (req, res) => {
   try {
@@ -19,7 +25,7 @@ const getMessages = async (req, res) => {
 const sendMessage = async (req, res) => {
   try {
     const { queryId } = req.params;
-    const { text } = req.body;
+    const { text, messageType = "text", attachmentUrl, fileName } = req.body;
     const agent = req.agent;
 
     const query = await Query.getById(queryId);
@@ -45,7 +51,7 @@ const sendMessage = async (req, res) => {
     try {
       const payload = {
         send_to: recipient,
-        message: text
+        message: attachmentUrl || text
       };
       
       const apiRes = await axios.post(`${apiURL}/whatsapp-message`, payload, {
@@ -93,10 +99,14 @@ const sendMessage = async (req, res) => {
     // --------------------------------------------------------
 
     const now = new Date();
+    const storedText = attachmentUrl || text;
+    const previewText = toPreviewText(messageType, storedText);
     const created = await Message.create({
       queryId,
       sender: "agent",
-      text,
+      text: storedText,
+      messageType,
+      fileName: fileName || null,
       time: now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
       agentId: agent.id,
       agentName: agent.name,
@@ -105,7 +115,7 @@ const sendMessage = async (req, res) => {
 
     // Update query's last message preview
     await Query.update(
-      { message: text, time: now, assignedTo: agent.id },
+      { message: previewText, time: now, assignedTo: agent.id },
       { where: { id: queryId } }
     );
 
@@ -133,7 +143,7 @@ const sendMessage = async (req, res) => {
     // Broadcast to query room (real-time)
     try {
       getIO().to(`query:${queryId}`).emit("message:new", created);
-      getIO().emit("query:updated", { queryId, lastMessage: text, time: now.toISOString() });
+      getIO().emit("query:updated", { queryId, lastMessage: previewText, time: now.toISOString() });
     } catch {}
 
     res.status(201).json({ success: true, message: "Message sent", data: created });
@@ -419,6 +429,25 @@ const sendWhatsAppTemplateMessage = async (req, res) => {
   }
 };
 
+// POST /api/messages/upload
+const uploadAttachment = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
+    }
+    const host = `${req.protocol}://${req.get("host")}`;
+    return res.json({
+      success: true,
+      attachmentUrl: `${host}/uploads/${req.file.filename}`,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Failed to upload file" });
+  }
+};
+
 module.exports = {
   getMessages,
   sendMessage,
@@ -428,4 +457,5 @@ module.exports = {
   getWhatsAppTemplates,
   getWhatsAppTemplatePreview,
   sendWhatsAppTemplateMessage,
+  uploadAttachment,
 };

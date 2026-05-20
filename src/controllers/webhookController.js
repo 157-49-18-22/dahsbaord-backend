@@ -9,6 +9,12 @@ const maskNumber = (number) => {
   return '******' + str.slice(-4);
 };
 
+const toPreviewText = (messageType, text) => {
+  if (messageType === "image") return "[Image]";
+  if (messageType === "document") return "[Document]";
+  return text;
+};
+
 /**
  * POST /api/webhook/whatsapp
  */
@@ -19,7 +25,9 @@ const handleIncomingWhatsApp = async (req, res) => {
 
     // Support Alponix (WhatsAppSync) Format
     const from = body.phone_number;
+    const messageType = body.message_type || "text";
     const text = body.message || "[Media message]";
+    const previewText = toPreviewText(messageType, text);
     const name = body.name || from;
 
     if (!from) {
@@ -38,7 +46,7 @@ const handleIncomingWhatsApp = async (req, res) => {
         from,
         name,
         avatar: initials.slice(0, 2),
-        message: text,
+        message: previewText,
         time: now,
         status: "open",
         assignedTo: null,
@@ -47,7 +55,7 @@ const handleIncomingWhatsApp = async (req, res) => {
       });
     } else {
       await query.update({
-        message: text,
+        message: previewText,
         time: now,
         unread: (query.unread || 0) + 1,
       });

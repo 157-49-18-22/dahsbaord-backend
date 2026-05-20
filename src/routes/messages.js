@@ -3,9 +3,11 @@ const {
   getSentMessages,
   getWhatsAppTemplates,
   getWhatsAppTemplatePreview,
-  sendWhatsAppTemplateMessage
+  sendWhatsAppTemplateMessage,
+  uploadAttachment
 } = require("../controllers/messageController");
 const { protect } = require("../middleware/auth");
+const { upload } = require("../middleware/upload");
 
 const router = express.Router();
 
@@ -23,5 +25,6 @@ router.post("/templates/preview", getWhatsAppTemplatePreview);
 
 // POST /api/messages/templates/send — dispatch a structured template message
 router.post("/templates/send", sendWhatsAppTemplateMessage);
+router.post("/upload", upload.single("file"), uploadAttachment);
 
 module.exports = router;
