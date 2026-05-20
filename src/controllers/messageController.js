@@ -36,6 +36,10 @@ const sendViaAlponix = async ({ axios, apiURL, apiKey, recipient, messageType, t
   const mediaType = messageType === "image" ? "image" : "document";
   const mediaCandidates = [
     {
+      endpoint: messageType === "image" ? "whatsapp-image-message" : "whatsapp-document-message",
+      payload: { send_to: recipient, media_url: attachmentUrl, caption: text || "", file_name: fileName || "" },
+    },
+    {
       endpoint: "whatsapp-media-message",
       payload: { send_to: recipient, message_type: mediaType, media_url: attachmentUrl, caption: text || "" },
     },
@@ -47,21 +51,19 @@ const sendViaAlponix = async ({ axios, apiURL, apiKey, recipient, messageType, t
       endpoint: "whatsapp-message-media",
       payload: { send_to: recipient, type: mediaType, url: attachmentUrl, caption: text || "" },
     },
-    {
-      endpoint: "whatsapp-message",
-      payload: { send_to: recipient, message_type: mediaType, message: attachmentUrl, caption: text || "" },
-    },
   ];
 
   let lastErr = null;
   for (const candidate of mediaCandidates) {
     try {
+      console.log(`📤 Trying media endpoint ${candidate.endpoint} for ${mediaType}`);
       return await postWhatsAppPayload(axios, apiURL, apiKey, candidate.endpoint, candidate.payload);
     } catch (err) {
+      console.warn(`⚠️ Media endpoint failed: ${candidate.endpoint} -> ${err.message}`);
       lastErr = err;
     }
   }
-  throw lastErr || new Error("Media sending failed");
+  throw lastErr || new Error("Media sending failed. Provider media API not available.");
 };
 
 // GET /api/queries/:queryId/messages
