@@ -11,62 +11,6 @@ const toPreviewText = (messageType, text) => {
   return text;
 };
 
-const postWhatsAppPayload = async (axios, apiURL, apiKey, endpoint, payload) => {
-  const apiRes = await axios.post(`${apiURL}/${endpoint}`, payload, {
-    headers: {
-      "x-api-key": apiKey,
-      "Content-Type": "application/json",
-    },
-  });
-  const responseData = apiRes?.data || {};
-  const successFlag = String(responseData.success ?? "");
-  const messageText = String(responseData.message || "").toLowerCase();
-  const statusOk = apiRes.status >= 200 && apiRes.status < 300;
-  const looksSuccessful =
-    successFlag === "1" ||
-    messageText.includes("successfully sent") ||
-    messageText.includes("message sent");
-
-  const failed = successFlag === "-1" && !looksSuccessful;
-  if ((failed || !statusOk) && !looksSuccessful) {
-    throw new Error(apiRes.data.message || "Failed to send WhatsApp message");
-  }
-  return apiRes;
-};
-
-const sendViaAlponix = async ({ axios, apiURL, apiKey, recipient, messageType, text, attachmentUrl, fileName }) => {
-  if (messageType === "text" || !attachmentUrl) {
-    return postWhatsAppPayload(axios, apiURL, apiKey, "whatsapp-message", {
-      send_to: recipient,
-      message: text,
-    });
-  }
-
-  // Alponix docs: media is supported via template API header (IMAGE/VIDEO/TEXT),
-  // not direct whatsapp-message endpoint.
-  if (messageType === "image") {
-    const imageTemplateName = process.env.WHATSAPP_IMAGE_TEMPLATE_NAME || "order_confirmation12";
-    const payload = {
-      send_to: recipient,
-      template_name: imageTemplateName,
-      header: {
-        type: "IMAGE",
-        url: attachmentUrl,
-      },
-      variables: {
-        "1": text?.trim() || "Attachment",
-      },
-    };
-    return postWhatsAppPayload(axios, apiURL, apiKey, "message-template", payload);
-  }
-
-  // If document template is not configured, send URL as text fallback.
-  return postWhatsAppPayload(axios, apiURL, apiKey, "whatsapp-message", {
-    send_to: recipient,
-    message: attachmentUrl || fileName || text || "Document shared",
-  });
-};
-
 // GET /api/queries/:queryId/messages
 const getMessages = async (req, res) => {
   try {
@@ -105,26 +49,41 @@ const sendMessage = async (req, res) => {
     if (recipient.length === 10) recipient = '91' + recipient;
 
     try {
-      const apiRes = await sendViaAlponix({
-        axios,
-        apiURL,
-        apiKey,
-        recipient,
-        messageType,
-        text,
-        attachmentUrl,
-        fileName,
+      const payload = {
+        send_to: recipient,
+        message: attachmentUrl || text
+      };
+      
+      const apiRes = await axios.post(`${apiURL}/whatsapp-message`, payload, {
+        headers: {
+          'x-api-key': apiKey,
+          'Content-Type': 'application/json'
+        }
       });
 
       console.log(`✅ WhatsApp direct message sent to: ${recipient}, Response:`, apiRes.data);
+
+      if (apiRes.data && apiRes.data.success === "-1") {
+        const errMsg = apiRes.data.message || "";
+        if (errMsg.toLowerCase().includes("session") || errMsg.toLowerCase().includes("active")) {
+          return res.status(400).json({
+            success: false,
+            errorType: "SESSION_EXPIRED",
+            message: "No active session found for this number. Please send an approved WhatsApp Template to initiate the conversation."
+          });
+        } else {
+          return res.status(400).json({
+            success: false,
+            message: apiRes.data.message || "Failed to send WhatsApp message"
+          });
+        }
+      }
+
     } catch (apiErr) {
       const errorData = apiErr.response?.data;
       console.error("❌ WhatsApp Direct Message API Error:", errorData || apiErr.message);
       
       const errMsg = errorData?.message || apiErr.message || "";
-      if (String(errMsg).toLowerCase().includes("template successfully sent")) {
-        // Alponix can return inconsistent wrappers; treat this as success.
-      } else {
       if (errMsg.toLowerCase().includes("session") || errMsg.toLowerCase().includes("active")) {
         return res.status(400).json({
           success: false,
@@ -136,7 +95,6 @@ const sendMessage = async (req, res) => {
         success: false,
         message: errMsg || "Failed to send WhatsApp message"
       });
-      }
     }
     // --------------------------------------------------------
 
