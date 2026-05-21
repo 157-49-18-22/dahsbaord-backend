@@ -42,14 +42,68 @@ if (process.env.DATABASE_URL) {
   );
 }
 
+const runSchemaPatches = async () => {
+  const patches = [
+    {
+      table: "Queries",
+      column: "acceptedAt",
+      sql: "ALTER TABLE Queries ADD COLUMN acceptedAt DATETIME NULL",
+    },
+    {
+      table: "Messages",
+      column: "messageType",
+      sql: "ALTER TABLE Messages ADD COLUMN messageType VARCHAR(20) NOT NULL DEFAULT 'text'",
+    },
+    {
+      table: "Messages",
+      column: "fileName",
+      sql: "ALTER TABLE Messages ADD COLUMN fileName VARCHAR(255) NULL",
+    },
+    {
+      table: "Messages",
+      column: "replyToMessageId",
+      sql: "ALTER TABLE Messages ADD COLUMN replyToMessageId VARCHAR(36) NULL",
+    },
+    {
+      table: "Messages",
+      column: "replyToText",
+      sql: "ALTER TABLE Messages ADD COLUMN replyToText TEXT NULL",
+    },
+    {
+      table: "Messages",
+      column: "replyToSender",
+      sql: "ALTER TABLE Messages ADD COLUMN replyToSender VARCHAR(20) NULL",
+    },
+    {
+      table: "Messages",
+      column: "replyToMessageType",
+      sql: "ALTER TABLE Messages ADD COLUMN replyToMessageType VARCHAR(20) NULL",
+    },
+  ];
+
+  for (const patch of patches) {
+    try {
+      await sequelize.query(patch.sql);
+      console.log(`✅ Added column ${patch.table}.${patch.column}`);
+    } catch (err) {
+      const msg = String(err.message || "");
+      if (msg.includes("Duplicate column") || msg.includes("already exists")) {
+        console.log(`ℹ️ Column ${patch.table}.${patch.column} already exists`);
+      } else {
+        console.warn(`⚠️ Schema patch skipped (${patch.table}.${patch.column}):`, msg);
+      }
+    }
+  }
+};
+
 const connectDB = async () => {
   try {
     await sequelize.authenticate();
     console.log('✅ MySQL Connection has been established successfully.');
     
-    // Sync models - creates tables if they don't exist
-    // In production, use migrations instead of alter: true
-    await sequelize.sync();
+    // Create missing tables; add new columns on existing production DBs
+    await sequelize.sync({ alter: true });
+    await runSchemaPatches();
     console.log('✅ MySQL Models synced successfully.');
   } catch (error) {
     console.error('❌ Unable to connect to the MySQL database:', error);

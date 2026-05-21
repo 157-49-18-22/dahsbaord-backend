@@ -27,6 +27,22 @@ const Message = sequelize.define('Message', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  replyToMessageId: {
+    type: DataTypes.STRING(36),
+    allowNull: true
+  },
+  replyToText: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  replyToSender: {
+    type: DataTypes.STRING(20),
+    allowNull: true
+  },
+  replyToMessageType: {
+    type: DataTypes.STRING(20),
+    allowNull: true
+  },
   time: {
     type: DataTypes.STRING
   },

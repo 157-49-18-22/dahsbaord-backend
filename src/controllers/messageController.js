@@ -29,8 +29,27 @@ const normalizePublicFileUrl = (url) => {
   return out;
 };
 
+const quoteLabelForType = (messageType, text) => {
+  if (messageType === "image") return "[Image]";
+  if (messageType === "document") return "[Document]";
+  const t = (text || "").trim();
+  if (t.length > 120) return `${t.slice(0, 120)}…`;
+  return t || "[Message]";
+};
+
+const formatWhatsAppReplyCaption = (replyTo, bodyText) => {
+  if (!replyTo?.replyToText && !replyTo?.replyToSender) return bodyText || "";
+  const who = replyTo.replyToSender === "agent" ? "You" : "Customer";
+  const quote = quoteLabelForType(replyTo.replyToMessageType, replyTo.replyToText);
+  const body = (bodyText || "").trim();
+  const header = `↩ Replying to ${who}:\n"${quote}"`;
+  return body ? `${header}\n\n${body}` : header;
+};
+
 /** Alponix §5 — Direct Flexible Messaging (non-template image/document) */
-const buildAlponixWhatsAppPayload = ({ recipient, messageType, text, attachmentUrl, fileName }) => {
+const buildAlponixWhatsAppPayload = ({ recipient, messageType, text, attachmentUrl, fileName, replyTo }) => {
+  const outboundText = formatWhatsAppReplyCaption(replyTo, text);
+
   if (attachmentUrl && (messageType === "image" || messageType === "document")) {
     const fileUrl = normalizePublicFileUrl(attachmentUrl);
     const payload = {
@@ -38,13 +57,13 @@ const buildAlponixWhatsAppPayload = ({ recipient, messageType, text, attachmentU
       file_type: messageType,
       file_url: fileUrl,
     };
-    if (text?.trim()) payload.message = text.trim();
+    if (outboundText?.trim()) payload.message = outboundText.trim();
     if (messageType === "document" && fileName) payload.document_name = fileName;
     return payload;
   }
   return {
     send_to: recipient,
-    message: text || "",
+    message: outboundText || "",
   };
 };
 
@@ -69,7 +88,7 @@ const getMessages = async (req, res) => {
 const sendMessage = async (req, res) => {
   try {
     const { queryId } = req.params;
-    const { text, messageType = "text", attachmentUrl, fileName } = req.body;
+    const { text, messageType = "text", attachmentUrl, fileName, replyTo } = req.body;
     const agent = req.agent;
 
     const query = await Query.getById(queryId);
@@ -99,6 +118,7 @@ const sendMessage = async (req, res) => {
         text,
         attachmentUrl,
         fileName,
+        replyTo,
       });
 
       console.log("📤 Alponix whatsapp-message payload:", JSON.stringify(payload, null, 2));
@@ -156,6 +176,10 @@ const sendMessage = async (req, res) => {
       text: storedText,
       messageType,
       fileName: fileName || null,
+      replyToMessageId: replyTo?.messageId || null,
+      replyToText: replyTo?.text || null,
+      replyToSender: replyTo?.sender || null,
+      replyToMessageType: replyTo?.messageType || null,
       time: now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
       agentId: agent.id,
       agentName: agent.name,
