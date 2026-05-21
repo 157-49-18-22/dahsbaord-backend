@@ -19,6 +19,14 @@ const Message = sequelize.define('Message', {
     type: DataTypes.TEXT,
     allowNull: false
   },
+  messageType: {
+    type: DataTypes.STRING(20),
+    defaultValue: 'text'
+  },
+  fileName: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   time: {
     type: DataTypes.STRING
   },

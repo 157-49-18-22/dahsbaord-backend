@@ -11,6 +11,50 @@ const toPreviewText = (messageType, text) => {
   return text;
 };
 
+/** Public HTTPS URL required by Meta/Alponix for file_url */
+const normalizePublicFileUrl = (url) => {
+  if (!url) return url;
+  let out = String(url).trim();
+  const publicBase = process.env.PUBLIC_BASE_URL?.replace(/\/$/, "");
+  if (publicBase && out.startsWith("http://")) {
+    try {
+      const u = new URL(out);
+      out = `${publicBase}${u.pathname}`;
+    } catch {
+      out = out.replace(/^http:/, "https:");
+    }
+  } else if (out.startsWith("http://")) {
+    out = out.replace(/^http:/, "https:");
+  }
+  return out;
+};
+
+/** Alponix §5 — Direct Flexible Messaging (non-template image/document) */
+const buildAlponixWhatsAppPayload = ({ recipient, messageType, text, attachmentUrl, fileName }) => {
+  if (attachmentUrl && (messageType === "image" || messageType === "document")) {
+    const fileUrl = normalizePublicFileUrl(attachmentUrl);
+    const payload = {
+      send_to: recipient,
+      file_type: messageType,
+      file_url: fileUrl,
+    };
+    if (text?.trim()) payload.message = text.trim();
+    if (messageType === "document" && fileName) payload.document_name = fileName;
+    return payload;
+  }
+  return {
+    send_to: recipient,
+    message: text || "",
+  };
+};
+
+const isAlponixSuccess = (data) => {
+  if (!data) return false;
+  const flag = String(data.success ?? "");
+  const msg = String(data.message || "").toLowerCase();
+  return flag === "1" || msg.includes("dispatched successfully") || msg.includes("message sent");
+};
+
 // GET /api/queries/:queryId/messages
 const getMessages = async (req, res) => {
   try {
@@ -49,36 +93,41 @@ const sendMessage = async (req, res) => {
     if (recipient.length === 10) recipient = '91' + recipient;
 
     try {
-      const payload = {
-        send_to: recipient,
-        message: attachmentUrl || text
-      };
-      
-      const apiRes = await axios.post(`${apiURL}/whatsapp-message`, payload, {
-        headers: {
-          'x-api-key': apiKey,
-          'Content-Type': 'application/json'
-        }
+      const payload = buildAlponixWhatsAppPayload({
+        recipient,
+        messageType,
+        text,
+        attachmentUrl,
+        fileName,
       });
 
-      console.log(`✅ WhatsApp direct message sent to: ${recipient}, Response:`, apiRes.data);
+      console.log("📤 Alponix whatsapp-message payload:", JSON.stringify(payload, null, 2));
 
-      if (apiRes.data && apiRes.data.success === "-1") {
+      const apiRes = await axios.post(`${apiURL}/whatsapp-message`, payload, {
+        headers: {
+          "x-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+
+      console.log(`✅ WhatsApp sent to ${recipient}:`, apiRes.data);
+
+      if (apiRes.data && String(apiRes.data.success) === "-1" && !isAlponixSuccess(apiRes.data)) {
         const errMsg = apiRes.data.message || "";
         if (errMsg.toLowerCase().includes("session") || errMsg.toLowerCase().includes("active")) {
           return res.status(400).json({
             success: false,
             errorType: "SESSION_EXPIRED",
-            message: "No active session found for this number. Please send an approved WhatsApp Template to initiate the conversation."
-          });
-        } else {
-          return res.status(400).json({
-            success: false,
-            message: apiRes.data.message || "Failed to send WhatsApp message"
+            message:
+              "No active session found for this number. Customer must message you first (24h window), or send an approved template.",
           });
         }
+        return res.status(400).json({
+          success: false,
+          message: errMsg || "Failed to send WhatsApp message",
+          data: apiRes.data.data,
+        });
       }
-
     } catch (apiErr) {
       const errorData = apiErr.response?.data;
       console.error("❌ WhatsApp Direct Message API Error:", errorData || apiErr.message);
@@ -435,10 +484,12 @@ const uploadAttachment = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
-    const host = `${req.protocol}://${req.get("host")}`;
+    const publicBase = process.env.PUBLIC_BASE_URL?.replace(/\/$/, "");
+    const host = publicBase || `${req.protocol}://${req.get("host")}`;
+    const attachmentUrl = normalizePublicFileUrl(`${host}/uploads/${req.file.filename}`);
     return res.json({
       success: true,
-      attachmentUrl: `${host}/uploads/${req.file.filename}`,
+      attachmentUrl,
       fileName: req.file.originalname,
       mimeType: req.file.mimetype,
       size: req.file.size,

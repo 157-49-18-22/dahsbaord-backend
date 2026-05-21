@@ -65,6 +65,7 @@ const handleIncomingWhatsApp = async (req, res) => {
       queryId: query.id,
       sender: "customer",
       text,
+      messageType,
       time: now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
       agentId: null,
       agentName: null,
