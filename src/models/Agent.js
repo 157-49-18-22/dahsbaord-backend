@@ -48,6 +48,7 @@ const Agent = sequelize.define('Agent', {
     defaultValue: 0
   }
 }, {
+  tableName: 'agents',
   timestamps: true
 });
 

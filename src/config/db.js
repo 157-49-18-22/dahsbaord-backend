@@ -101,8 +101,8 @@ const connectDB = async () => {
     await sequelize.authenticate();
     console.log('✅ MySQL Connection has been established successfully.');
     
-    // Create missing tables; add new columns on existing production DBs
-    await sequelize.sync({ alter: true });
+    // Create missing tables only; do not ALTER existing columns (breaks MySQL UNIQUE indexes)
+    await sequelize.sync();
     await runSchemaPatches();
     console.log('✅ MySQL Models synced successfully.');
   } catch (error) {
