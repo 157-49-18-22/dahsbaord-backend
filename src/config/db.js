@@ -79,6 +79,16 @@ const runSchemaPatches = async () => {
       column: "replyToMessageType",
       sql: "ALTER TABLE Messages ADD COLUMN replyToMessageType VARCHAR(20) NULL",
     },
+    {
+      table: "Agents",
+      column: "groupId",
+      sql: "ALTER TABLE Agents ADD COLUMN groupId VARCHAR(36) NULL",
+    },
+    {
+      table: "Queries",
+      column: "assignedToGroup",
+      sql: "ALTER TABLE Queries ADD COLUMN assignedToGroup VARCHAR(36) NULL",
+    },
   ];
 
   for (const patch of patches) {

@@ -30,11 +30,11 @@ const logActivity = async (agentId, agentName, action, customer, queryId, type, 
 // GET /api/queries
 const getQueries = async (req, res) => {
   try {
-    const { page = 1, limit = 20, status, assignedTo, priority, search } = req.query;
+    const { page = 1, limit = 20, status, assignedTo, assignedToGroup, priority, search } = req.query;
     const result = await Query.getPaginated(
       parseInt(page),
       parseInt(limit),
-      { status, assignedTo, priority, search }
+      { status, assignedTo, assignedToGroup, priority, search }
     );
 
     const isAdmin = req.agent && req.agent.role && req.agent.role.toLowerCase().includes("admin");
@@ -119,16 +119,22 @@ const createQuery = async (req, res) => {
 const assignQuery = async (req, res) => {
   try {
     const { id } = req.params;
-    const agentId = req.body.agentId || req.agent.id;
+    const agentId = req.body.agentId !== undefined ? req.body.agentId : req.agent.id;
+    const groupId = req.body.groupId || null;
     const agentName = req.agent.name;
 
     const query = await Query.getById(id);
     if (!query) return res.status(404).json({ success: false, message: "Query not found" });
 
-    await Query.assign(id, agentId);
-    const updatedQuery = await Query.getById(id);
+    if (groupId) {
+      await Query.update({ assignedToGroup: groupId, assignedTo: null, status: 'open' }, { where: { id } });
+      await logActivity(req.agent.id, agentName, "Assigned to group", query.name, id, "assigned");
+    } else {
+      await Query.update({ assignedTo: agentId, status: 'in_progress', unread: 0, acceptedAt: new Date() }, { where: { id } });
+      await logActivity(req.agent.id, agentName, "Assigned to agent", query.name, id, "assigned");
+    }
     
-    await logActivity(req.agent.id, agentName, "Assigned to self", query.name, id, "assigned");
+    const updatedQuery = await Query.getById(id);
 
     try { getIO().emit("query:assigned", { queryId: id, agentId, acceptedAt: updatedQuery.acceptedAt }); } catch {}
 

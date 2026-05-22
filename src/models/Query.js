@@ -33,6 +33,10 @@ const Query = sequelize.define('Query', {
     type: DataTypes.STRING(36),
     allowNull: true
   },
+  assignedToGroup: {
+    type: DataTypes.STRING(36),
+    allowNull: true
+  },
   unread: {
     type: DataTypes.INTEGER,
     defaultValue: 0
@@ -86,6 +90,7 @@ Query.getPaginated = async (page = 1, limit = 20, filters = {}) => {
   const where = {};
   if (filters.status && filters.status !== 'all') where.status = filters.status;
   if (filters.assignedTo) where.assignedTo = filters.assignedTo;
+  if (filters.assignedToGroup) where.assignedToGroup = filters.assignedToGroup;
   if (filters.priority) where.priority = filters.priority;
   if (filters.search) {
     where[Op.or] = [

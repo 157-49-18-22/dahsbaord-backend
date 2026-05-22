@@ -11,6 +11,7 @@ const { errorHandler, notFound } = require("./src/middleware/errorHandler");
 // Routes
 const authRoutes     = require("./src/routes/auth");
 const agentRoutes    = require("./src/routes/agents");
+const groupRoutes    = require("./src/routes/groups");
 const queryRoutes    = require("./src/routes/queries");
 const messageRoutes  = require("./src/routes/messages");
 const activityRoutes = require("./src/routes/activity");
@@ -67,6 +68,7 @@ app.get("/api/health", (req, res) => {
 // ─── API Routes ────────────────────────────────────────────────
 app.use("/api/auth",     authRoutes);
 app.use("/api/agents",   agentRoutes);
+app.use("/api/groups",   groupRoutes);
 app.use("/api/queries",  queryRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/activity", activityRoutes);

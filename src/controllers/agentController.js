@@ -27,7 +27,7 @@ const getAgentById = async (req, res) => {
 // POST /api/agents
 const createAgent = async (req, res) => {
   try {
-    const { name, email, password, role, avatar } = req.body;
+    const { name, email, password, role, avatar, groupId } = req.body;
 
     // Check email uniqueness
     const existing = await Agent.getByEmail(email);
@@ -44,6 +44,7 @@ const createAgent = async (req, res) => {
       email,
       password: hashedPassword,
       role: role || "Support Agent",
+      groupId: groupId || null,
       status: "offline",
       resolvedToday: 0,
       totalMessages: 0,

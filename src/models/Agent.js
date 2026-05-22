@@ -27,6 +27,10 @@ const Agent = sequelize.define('Agent', {
     type: DataTypes.STRING,
     defaultValue: 'Support Agent'
   },
+  groupId: {
+    type: DataTypes.STRING(36),
+    allowNull: true
+  },
   status: {
     type: DataTypes.STRING(20),
     defaultValue: 'offline'
