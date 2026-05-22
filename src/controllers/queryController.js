@@ -126,11 +126,15 @@ const assignQuery = async (req, res) => {
     const query = await Query.getById(id);
     if (!query) return res.status(404).json({ success: false, message: "Query not found" });
 
+    const newStatus = req.body.status || 'in_progress';
+
     if (groupId) {
       await Query.update({ assignedToGroup: groupId, assignedTo: null, status: 'open' }, { where: { id } });
       await logActivity(req.agent.id, agentName, "Assigned to group", query.name, id, "assigned");
     } else {
-      await Query.update({ assignedTo: agentId, status: 'in_progress', unread: 0, acceptedAt: new Date() }, { where: { id } });
+      const updateData = { assignedTo: agentId, status: newStatus, unread: 0 };
+      if (newStatus === 'in_progress') updateData.acceptedAt = new Date();
+      await Query.update(updateData, { where: { id } });
       await logActivity(req.agent.id, agentName, "Assigned to agent", query.name, id, "assigned");
     }
     
