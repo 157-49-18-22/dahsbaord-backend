@@ -256,7 +256,7 @@ const receiveCustomerMessage = async (req, res) => {
 
     try {
       getIO().to(`query:${queryId}`).emit("message:new", created);
-      getIO().emit("query:newIncoming", { queryId, message: text, name: query.name });
+      getIO().emit("query:newIncoming", { queryId, message: created, name: query.name });
     } catch {}
 
     res.status(201).json({ success: true, data: created });
