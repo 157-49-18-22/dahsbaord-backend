@@ -39,13 +39,14 @@ const getQueries = async (req, res) => {
 
     const isAdmin = req.agent && req.agent.role && req.agent.role.toLowerCase().includes("admin");
     
-    if (!isAdmin) {
-      result.data = result.data.map(q => {
-        const query = q.toJSON();
+    result.data = await Promise.all(result.data.map(async (q) => {
+      const query = q.toJSON ? q.toJSON() : q;
+      query.messages = await Message.getByQueryId(query.id);
+      if (!isAdmin) {
         query.from = maskNumber(query.from);
-        return query;
-      });
-    }
+      }
+      return query;
+    }));
 
     res.json({ success: true, ...result });
   } catch (err) {
