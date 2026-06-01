@@ -54,11 +54,25 @@ const handleIncomingWhatsApp = async (req, res) => {
         priority: "medium",
       });
     } else {
-      await query.update({
-        message: previewText,
-        time: now,
-        unread: (query.unread || 0) + 1,
-      });
+      // If query is 'in_progress', move to 'open' with highlight, keep assignedTo
+      if (query.status === 'in_progress') {
+        await query.update({
+          message: previewText,
+          time: now,
+          unread: (query.unread || 0) + 1,
+          status: 'open',
+          highlight: true,
+        });
+      } else {
+        // For non-'in_progress' queries, keep existing flow (go to Query Pool)
+        await query.update({
+          message: previewText,
+          time: now,
+          unread: (query.unread || 0) + 1,
+          assignedTo: null, // Remove assignment so it goes to Query Pool
+          highlight: false,
+        });
+      }
     }
 
     const msg = await Message.create({

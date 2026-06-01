@@ -48,6 +48,10 @@ const Query = sequelize.define('Query', {
   acceptedAt: {
     type: DataTypes.DATE,
     allowNull: true
+  },
+  highlight: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   }
 }, {
   timestamps: true
@@ -92,6 +96,13 @@ Query.getPaginated = async (page = 1, limit = 20, filters = {}) => {
   if (filters.assignedTo) where.assignedTo = filters.assignedTo;
   if (filters.assignedToGroup) where.assignedToGroup = filters.assignedToGroup;
   if (filters.priority) where.priority = filters.priority;
+  
+  // Exclude 'in_progress' status from Query Pool (when no assignedTo filter)
+  // This ensures 'in_progress' chats only appear for the assigned agent
+  if (!filters.assignedTo && (!filters.status || filters.status === 'all' || filters.status === 'open')) {
+    where.status = { [Op.ne]: 'in_progress' };
+  }
+  
   if (filters.search) {
     const searchTerm = filters.search.toLowerCase();
     where[Op.or] = [
@@ -101,9 +112,14 @@ Query.getPaginated = async (page = 1, limit = 20, filters = {}) => {
     ];
   }
 
+  // Sort highlighted chats to the top when filtering by assignedTo
+  const order = filters.assignedTo 
+    ? [['highlight', 'DESC'], ['time', 'DESC']]
+    : [['time', 'DESC']];
+
   const { count, rows } = await Query.findAndCountAll({
     where,
-    order: [['time', 'DESC']],
+    order,
     limit: parseInt(limit),
     offset: (parseInt(page) - 1) * parseInt(limit)
   });
