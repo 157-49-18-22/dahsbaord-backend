@@ -94,12 +94,15 @@ const sendMessage = async (req, res) => {
     const query = await Query.getById(queryId);
     if (!query) return res.status(404).json({ success: false, message: "Query not found" });
 
-    // Ownership check: only the assigned agent can reply
-    if (!query.assignedTo) {
-      return res.status(403).json({ success: false, message: "You must accept this query before replying" });
-    }
-    if (query.assignedTo !== agent.id) {
-      return res.status(403).json({ success: false, message: "This query is assigned to another agent" });
+    // Ownership check: only the assigned agent can reply, unless the user is an admin
+    const isAdmin = agent.role && (agent.role.toLowerCase().includes("admin") || agent.role.toLowerCase().includes("senior"));
+    if (!isAdmin) {
+      if (!query.assignedTo) {
+        return res.status(403).json({ success: false, message: "You must accept this query before replying" });
+      }
+      if (query.assignedTo !== agent.id) {
+        return res.status(403).json({ success: false, message: "This query is assigned to another agent" });
+      }
     }
 
     // --- WhatsApp API Integration (Alponix Direct Message) ---
@@ -186,9 +189,10 @@ const sendMessage = async (req, res) => {
       read: false,
     });
 
-    // Update query's last message preview
+    // Update query's last message preview. Preserve existing assignment if an admin is replying to someone else's query.
+    const finalAssignedTo = query.assignedTo ? query.assignedTo : agent.id;
     await Query.update(
-      { message: previewText, time: now, assignedTo: agent.id },
+      { message: previewText, time: now, assignedTo: finalAssignedTo },
       { where: { id: queryId } }
     );
 
@@ -397,12 +401,15 @@ const sendWhatsAppTemplateMessage = async (req, res) => {
     const query = await Query.getById(queryId);
     if (!query) return res.status(404).json({ success: false, message: "Query not found" });
 
-    // Ownership check: only the assigned agent can reply
-    if (!query.assignedTo) {
-      return res.status(403).json({ success: false, message: "You must accept this query before replying" });
-    }
-    if (query.assignedTo !== agent.id) {
-      return res.status(403).json({ success: false, message: "This query is assigned to another agent" });
+    // Ownership check: only the assigned agent can reply, unless the user is an admin
+    const isAdmin = agent.role && (agent.role.toLowerCase().includes("admin") || agent.role.toLowerCase().includes("senior"));
+    if (!isAdmin) {
+      if (!query.assignedTo) {
+        return res.status(403).json({ success: false, message: "You must accept this query before replying" });
+      }
+      if (query.assignedTo !== agent.id) {
+        return res.status(403).json({ success: false, message: "This query is assigned to another agent" });
+      }
     }
 
     const axios = require("axios");
@@ -463,8 +470,9 @@ const sendWhatsAppTemplateMessage = async (req, res) => {
     });
 
     // Update query's last message preview
+    const finalAssignedTo = query.assignedTo ? query.assignedTo : agent.id;
     await Query.update(
-      { message: displayText, time: now, assignedTo: agent.id },
+      { message: displayText, time: now, assignedTo: finalAssignedTo },
       { where: { id: queryId } }
     );
 
