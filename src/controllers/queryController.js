@@ -130,10 +130,10 @@ const assignQuery = async (req, res) => {
     const newStatus = req.body.status || 'in_progress';
 
     if (groupId) {
-      await Query.update({ assignedToGroup: groupId, assignedTo: null, status: 'open', highlight: false }, { where: { id } });
+      await Query.update({ assignedToGroup: groupId, assignedTo: null, status: 'open' }, { where: { id } });
       await logActivity(req.agent.id, agentName, "Assigned to group", query.name, id, "assigned");
     } else {
-      const updateData = { assignedTo: agentId, status: newStatus, unread: 0, highlight: false };
+      const updateData = { assignedTo: agentId, status: newStatus, unread: 0 };
       if (newStatus === 'in_progress') updateData.acceptedAt = new Date();
       await Query.update(updateData, { where: { id } });
       await logActivity(req.agent.id, agentName, "Assigned to agent", query.name, id, "assigned");
@@ -173,8 +173,6 @@ const resolveQuery = async (req, res) => {
 const markRead = async (req, res) => {
   try {
     const result = await Query.markRead(req.params.id);
-    // Also clear highlight when marked as read
-    await Query.update({ highlight: false }, { where: { id: req.params.id } });
     if (!result[0]) return res.status(404).json({ success: false, message: "Query not found" });
     res.json({ success: true, message: "Marked as read" });
   } catch (err) {
