@@ -18,48 +18,11 @@ const startSessionExpiryScheduler = () => {
       const now = new Date();
       const expiryThreshold = new Date(now.getTime() - timeoutMinutes * 60 * 1000);
 
-      // Find all queries where status is 'in_progress', acceptedAt is not null and is older than threshold
-      const expiredQueries = await Query.findAll({
-        where: {
-          status: 'in_progress',
-          acceptedAt: {
-            [Op.lt]: expiryThreshold,
-            [Op.ne]: null
-          }
-        }
-      });
-
-      if (expiredQueries.length > 0) {
-        console.log(`⏰ [Auto-Expiry] Found ${expiredQueries.length} expired active agent queries. Resolving now...`);
-      }
-
-      for (const query of expiredQueries) {
-        // Resolve in database (automatically clears assignedTo & sets status to resolved)
-        await Query.resolve(query.id);
-        
-        // Log system auto-resolution activity
-        await ActivityLog.create({
-          id: uuidv4(),
-          agentId: "system",
-          agentName: "System Scheduler",
-          action: "Auto-resolved (SLA Expiry)",
-          customer: query.name,
-          queryId: query.id,
-          details: `Query auto-closed due to ${timeoutMinutes}-minute SLA timer expiry since agent acceptance.`,
-          time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
-          type: "resolved",
-          date: new Date().toISOString().split("T")[0],
-        });
-
-        // Broadcast to all socket.io clients so the chat screen instantly updates
-        try {
-          const io = getIO();
-          io.emit("query:resolved", { queryId: query.id });
-          console.log(`⏰ [Auto-Expiry] Query ${query.id} (${query.name}) has been auto-resolved successfully.`);
-        } catch (socketErr) {
-          console.error(`❌ [Auto-Expiry] Socket broadcast failed for ${query.id}:`, socketErr.message);
-        }
-      }
+      // User request: "jo bhi in proegress chat hong vo query pool mnhi a aksti"
+      // DO NOT auto-resolve in_progress chats anymore. They stay parked with the agent.
+      // We process expired logic in webhook when they reply.
+      
+      const expiredQueries = []; // Disabled auto-resolve SLA
     } catch (err) {
       console.error("❌ [Auto-Expiry] Scheduler iteration error:", err);
     }

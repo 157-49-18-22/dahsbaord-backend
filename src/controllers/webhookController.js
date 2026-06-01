@@ -54,10 +54,19 @@ const handleIncomingWhatsApp = async (req, res) => {
         priority: "medium",
       });
     } else {
+      let isUrgent = false;
+      if (query.status === 'in_progress' && query.acceptedAt) {
+        const diffMs = now.getTime() - new Date(query.acceptedAt).getTime();
+        if (diffMs > 30 * 60 * 1000) {
+          isUrgent = true;
+        }
+      }
+
       await query.update({
         message: previewText,
         time: now,
         unread: (query.unread || 0) + 1,
+        ...(isUrgent && { priority: 'urgent' })
       });
     }
 
