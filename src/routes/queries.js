@@ -47,6 +47,21 @@ router.patch("/:id/resolve", resolveQuery);
 // PATCH /api/queries/:id/read
 router.patch("/:id/read", markRead);
 
+// PATCH /api/queries/:id/priority
+router.patch("/:id/priority", async (req, res) => {
+  try {
+    const Query = require("../models/Query");
+    const { priority } = req.body;
+    const allowed = ['low', 'medium', 'high', 'urgent'];
+    if (!allowed.includes(priority)) return res.status(400).json({ message: "Invalid priority" });
+    await Query.update({ priority }, { where: { id: req.params.id } });
+    res.json({ success: true, priority });
+  } catch (err) {
+    console.error("Priority update error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 // DELETE /api/queries/:id  — admin only
 router.delete("/:id", adminOnly, deleteQuery);
 
