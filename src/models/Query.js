@@ -93,10 +93,11 @@ Query.getPaginated = async (page = 1, limit = 20, filters = {}) => {
   if (filters.assignedToGroup) where.assignedToGroup = filters.assignedToGroup;
   if (filters.priority) where.priority = filters.priority;
   if (filters.search) {
+    const searchTerm = filters.search.toLowerCase();
     where[Op.or] = [
-      { name: { [Op.like]: `%${filters.search}%` } },
-      { message: { [Op.like]: `%${filters.search}%` } },
-      { from: { [Op.like]: `%${filters.search}%` } }
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('name')), 'LIKE', `%${searchTerm}%`),
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('message')), 'LIKE', `%${searchTerm}%`),
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('from')), 'LIKE', `%${searchTerm}%`)
     ];
   }
 
