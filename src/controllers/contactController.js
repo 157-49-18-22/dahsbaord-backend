@@ -77,17 +77,21 @@ const editContact = async (req, res) => {
 
 const importContactsFromExcel = async (req, res) => {
   try {
-    // Read from the file in public
-    const filePath = path.join(__dirname, "../../../my-react-app/public/PARENT MOBILE NO.xlsx");
-    const workbook = xlsx.readFile(filePath);
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: "Please upload an Excel file" });
+    }
+
+    // Read from the uploaded file buffer
+    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
     const sheet_name_list = workbook.SheetNames;
     const xlData = xlsx.utils.sheet_to_json(workbook.Sheets[sheet_name_list[0]]);
 
     let importedCount = 0;
     
     for (const row of xlData) {
-      const name = row["PARENT NAME"];
-      const mobileNo = row["MOBILE NO"];
+      // Allow lowercase keys just in case it varies
+      const name = row["PARENT NAME"] || row["Parent Name"] || row["Name"] || Object.values(row)[0];
+      const mobileNo = row["MOBILE NO"] || row["Mobile No"] || row["Phone"] || Object.values(row)[1];
       
       if (name && mobileNo) {
         const noStr = String(mobileNo).trim();
