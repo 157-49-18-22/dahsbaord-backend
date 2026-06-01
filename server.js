@@ -17,6 +17,7 @@ const messageRoutes  = require("./src/routes/messages");
 const activityRoutes = require("./src/routes/activity");
 const reportRoutes   = require("./src/routes/reports");
 const webhookRoutes  = require("./src/routes/webhook");
+const contactRoutes  = require("./src/routes/contacts");
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -57,6 +58,7 @@ app.get("/", (req, res) => {
       activity: "/api/activity",
       reports:  "/api/reports",
       webhook:  "/api/webhook",
+      contacts: "/api/contacts",
     },
   });
 });
@@ -74,6 +76,7 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/activity", activityRoutes);
 app.use("/api/reports",  reportRoutes);
 app.use("/api/webhook",  webhookRoutes);
+app.use("/api/contacts", contactRoutes);
 
 // ─── Error Handlers ────────────────────────────────────────────
 app.use(notFound);

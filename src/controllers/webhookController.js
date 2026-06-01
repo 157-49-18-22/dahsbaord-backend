@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require("uuid");
 const Query = require("../models/Query");
 const Message = require("../models/Message");
+const Contact = require("../models/Contact");
 const { getIO } = require("../config/socket");
 
 const maskNumber = (number) => {
@@ -28,15 +29,36 @@ const handleIncomingWhatsApp = async (req, res) => {
     const messageType = body.message_type || "text";
     const text = body.message || "[Media message]";
     const previewText = toPreviewText(messageType, text);
-    const name = body.name || from;
+    let name = body.name || from;
 
     if (!from) {
       console.log("DEBUG: No phone_number found in payload, skipping.");
       return res.sendStatus(200);
     }
 
+    try {
+      // Strip any whitespace from the incoming number just in case
+      const cleanFrom = from.replace(/\s+/g, "");
+      let searchNumber = cleanFrom;
+      if (searchNumber.startsWith("91") && searchNumber.length === 12) {
+        searchNumber = searchNumber.substring(2);
+      }
+      
+      const contactList = await Contact.findAll();
+      const match = contactList.find(c => {
+         const cNum = c.mobileNo.replace(/\s+/g, "");
+         return cNum === searchNumber || cNum === cleanFrom;
+      });
+
+      if (match) {
+        name = match.name;
+      }
+    } catch (err) {
+      console.error("Error finding contact:", err);
+    }
+
     const allQueries = await Query.findAll();
-    let query = allQueries.find((q) => q.from === from && q.status !== "resolved");
+    let query = allQueries.find((q) => q.from.replace(/\s+/g, "") === from.replace(/\s+/g, "") && q.status !== "resolved");
 
     const now = new Date();
 
@@ -63,6 +85,7 @@ const handleIncomingWhatsApp = async (req, res) => {
       }
 
       await query.update({
+        name, // Overwrite name to catch any Contact Book updates
         message: previewText,
         time: now,
         unread: (query.unread || 0) + 1,
