@@ -42,6 +42,8 @@ const getQueries = async (req, res) => {
     result.data = await Promise.all(result.data.map(async (q) => {
       const query = q.toJSON ? q.toJSON() : q;
       query.messages = await Message.getByQueryId(query.id);
+      // Normalize null/undefined priority — old DB rows may not have a value set
+      if (!query.priority) query.priority = 'medium';
       if (!isAdmin) {
         query.from = maskNumber(query.from);
       }
