@@ -45,66 +45,7 @@ const seed = async () => {
     const [sneha, amit, rohan, kavya, admin] = agents;
 
     // --- Queries & Messages ---
-    const queriesRaw = [
-      {
-        from: "+91 98765 43210", name: "Rahul Sharma", avatar: "RS",
-        message: "Mujhe apne account ke baare mein jaankari chahiye",
-        status: "open", assignedTo: null, unread: 3, priority: "high",
-        messages: [
-          { sender: "customer", text: "Hello, koi hai?" },
-          { sender: "customer", text: "Mujhe apne account ke baare mein jaankari chahiye" },
-          { sender: "customer", text: "Urgent hai please reply karo" },
-        ],
-      },
-      {
-        from: "+91 87654 32109", name: "Priya Verma", avatar: "PV",
-        message: "Payment nahi hua mera, please check karo",
-        status: "open", assignedTo: amit.id, unread: 1, priority: "high",
-        messages: [
-          { sender: "customer", text: "Hi, mera payment stuck hai" },
-          { sender: "agent",    text: "Haan ji, aapka order number kya hai?", agentId: amit.id, agentName: amit.name },
-          { sender: "customer", text: "Payment nahi hua mera, please check karo" },
-        ],
-      },
-      {
-        from: "+91 76543 21098", name: "Suresh Gupta", avatar: "SG",
-        message: "Delivery kab tak hogi?",
-        status: "resolved", assignedTo: sneha.id, unread: 0, priority: "low",
-        messages: [
-          { sender: "customer", text: "Delivery kab tak hogi?" },
-          { sender: "agent",    text: "2-3 business days mein delivery ho jaayegi", agentId: sneha.id, agentName: sneha.name },
-          { sender: "customer", text: "Thank you!" },
-        ],
-      },
-      {
-        from: "+91 65432 10987", name: "Anjali Mehta", avatar: "AM",
-        message: "Refund process kaise hoga?",
-        status: "open", assignedTo: null, unread: 5, priority: "medium",
-        messages: [
-          { sender: "customer", text: "Mujhe refund chahiye" },
-          { sender: "customer", text: "Refund process kaise hoga?" },
-        ],
-      },
-      {
-        from: "+91 54321 09876", name: "Vikram Patel", avatar: "VP",
-        message: "Product quality se main khush nahi hoon",
-        status: "in_progress", assignedTo: rohan.id, unread: 2, priority: "medium",
-        messages: [
-          { sender: "customer", text: "Mera product damaged aaya" },
-          { sender: "customer", text: "Product quality se main khush nahi hoon" },
-          { sender: "agent",    text: "Photo bhejo please", agentId: rohan.id, agentName: rohan.name },
-        ],
-      },
-      {
-        from: "+91 43210 98765", name: "Deepak Rao", avatar: "DR",
-        message: "Mujhe order cancel karna hai",
-        status: "open", assignedTo: null, unread: 2, priority: "high",
-        messages: [
-          { sender: "customer", text: "Mujhe order cancel karna hai" },
-          { sender: "customer", text: "Please jaldi karo" },
-        ],
-      },
-    ];
+    const queriesRaw = [];
 
     const baseTime = new Date("2026-04-15T18:00:00");
 
@@ -147,19 +88,7 @@ const seed = async () => {
     const today = new Date().toISOString().split("T")[0];
     const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
 
-    const logsRaw = [
-      { agentId: sneha.id, agentName: sneha.name, action: "Resolved the query", customer: "Suresh Gupta", type: "resolved", date: today, time: "21:15" },
-      { agentId: amit.id,  agentName: amit.name,  action: "Query assigned",     customer: "Priya Verma",  type: "assigned", date: today, time: "21:00" },
-      { agentId: rohan.id, agentName: rohan.name, action: "Sent a message",     customer: "Vikram Patel", type: "message",  date: today, time: "19:50" },
-      { agentId: sneha.id, agentName: sneha.name, action: "Resolved the query", customer: "Manoj Tiwari", type: "resolved", date: today, time: "19:30" },
-      { agentId: amit.id,  agentName: amit.name,  action: "Sent a message",     customer: "Priya Verma",  type: "message",  date: today, time: "19:00" },
-      { agentId: sneha.id, agentName: sneha.name, action: "Assigned to self",   customer: "Anita Sharma", type: "assigned", date: today, time: "18:45" },
-      { agentId: kavya.id, agentName: kavya.name, action: "Sent a message",     customer: "Deepak Rao",   type: "message",  date: today, time: "18:30" },
-      { agentId: rohan.id, agentName: rohan.name, action: "Resolved the query", customer: "Sonia Patel",  type: "resolved", date: today, time: "18:00" },
-      { agentId: sneha.id, agentName: sneha.name, action: "Resolved the query", customer: "Manoj Tiwari", type: "resolved", date: yesterday, time: "10:30" },
-      { agentId: amit.id,  agentName: amit.name,  action: "Sent a message",     customer: "Priya Verma",  type: "message",  date: yesterday, time: "11:00" },
-      { agentId: sneha.id, agentName: sneha.name, action: "Sent a message",     customer: "Rahul Sharma", type: "message",  date: yesterday, time: "09:45" },
-    ];
+    const logsRaw = [];
 
     for (const log of logsRaw) {
       const logTime = new Date(`${log.date}T${log.time}:00`);
