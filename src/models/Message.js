@@ -61,10 +61,6 @@ const Message = sequelize.define('Message', {
   deleted: {
     type: DataTypes.BOOLEAN,
     defaultValue: false
-  },
-  isEdited: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
   }
 }, {
   timestamps: true
