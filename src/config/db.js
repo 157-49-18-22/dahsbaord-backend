@@ -15,10 +15,10 @@ if (process.env.DATABASE_URL) {
     logging: false,
     dialectOptions,
     pool: {
-      max: 5,
-      min: 0,
+      max: 10,
+      min: 2,
       acquire: 30000,
-      idle: 10000
+      idle: 60000
     }
   });
 } else {
@@ -33,10 +33,10 @@ if (process.env.DATABASE_URL) {
       logging: false,
       dialectOptions,
       pool: {
-        max: 5,
-        min: 0,
+        max: 10,
+        min: 2,
         acquire: 30000,
-        idle: 10000
+        idle: 60000
       }
     }
   );
@@ -91,6 +91,32 @@ const runSchemaPatches = async () => {
     },
   ];
 
+  // ── Speed Indexes (safe to re-run, IF NOT EXISTS guard) ──────────
+  const indexes = [
+    { name: "idx_messages_queryId",  sql: "CREATE INDEX idx_messages_queryId  ON Messages(queryId)" },
+    { name: "idx_messages_sender",   sql: "CREATE INDEX idx_messages_sender   ON Messages(sender)" },
+    { name: "idx_messages_agentId",  sql: "CREATE INDEX idx_messages_agentId  ON Messages(agentId)" },
+    { name: "idx_queries_from",      sql: "CREATE INDEX idx_queries_from      ON Queries(`from`)" },
+    { name: "idx_queries_status",    sql: "CREATE INDEX idx_queries_status    ON Queries(status)" },
+    { name: "idx_queries_assignedTo",sql: "CREATE INDEX idx_queries_assignedTo ON Queries(assignedTo)" },
+    { name: "idx_activity_agentId",  sql: "CREATE INDEX idx_activity_agentId  ON ActivityLogs(agentId)" },
+    { name: "idx_activity_date",     sql: "CREATE INDEX idx_activity_date     ON ActivityLogs(date)" },
+  ];
+
+  for (const idx of indexes) {
+    try {
+      await sequelize.query(idx.sql);
+      console.log(`✅ Index created: ${idx.name}`);
+    } catch (err) {
+      const msg = String(err.message || "");
+      if (msg.includes("Duplicate key") || msg.includes("already exists") || msg.includes("duplicate")) {
+        console.log(`ℹ️  Index already exists: ${idx.name}`);
+      } else {
+        console.warn(`⚠️  Index skipped (${idx.name}):`, msg);
+      }
+    }
+  }
+
   for (const patch of patches) {
     try {
       await sequelize.query(patch.sql);
@@ -115,6 +141,16 @@ const connectDB = async () => {
     await sequelize.sync();
     await runSchemaPatches();
     console.log('✅ MySQL Models synced successfully.');
+
+    // ── Keep-Alive Ping: TiDB Free Tier sleeps after idle time ──
+    // Ping every 4 minutes to keep connection warm → no cold-start delay
+    setInterval(async () => {
+      try {
+        await sequelize.query('SELECT 1');
+      } catch (_) { /* silent */ }
+    }, 4 * 60 * 1000);
+    console.log('✅ DB keep-alive ping started (every 4 min).');
+
   } catch (error) {
     console.error('❌ Unable to connect to the MySQL database:', error);
     process.exit(1);
