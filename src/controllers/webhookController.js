@@ -1,19 +1,26 @@
-const { v4: uuidv4 } = require("uuid");
+const { Op } = require("sequelize");
 const Query = require("../models/Query");
 const Message = require("../models/Message");
 const Contact = require("../models/Contact");
 const { getIO } = require("../config/socket");
 
 const maskNumber = (number) => {
-  if (!number) return '********';
+  if (!number) return "********";
   const str = String(number);
-  return '******' + str.slice(-4);
+  return "******" + str.slice(-4);
 };
 
 const toPreviewText = (messageType, text) => {
   if (messageType === "image") return "[Image]";
   if (messageType === "document") return "[Document]";
   return text;
+};
+
+const phoneVariants = (from) => {
+  const cleanFrom = String(from || "").replace(/\s+/g, "");
+  let local = cleanFrom;
+  if (local.startsWith("91") && local.length === 12) local = local.substring(2);
+  return [...new Set([from, cleanFrom, local, `91${local}`, `+91${local}`].filter(Boolean))];
 };
 
 /**
@@ -24,7 +31,6 @@ const handleIncomingWhatsApp = async (req, res) => {
     const body = req.body;
     console.log("DEBUG: Incoming Webhook Body:", JSON.stringify(body, null, 2));
 
-    // Support Alponix (WhatsAppSync) Format
     const from = body.phone_number;
     const messageType = body.message_type || "text";
     const text = body.message || "[Media message]";
@@ -36,34 +42,44 @@ const handleIncomingWhatsApp = async (req, res) => {
       return res.sendStatus(200);
     }
 
-    try {
-      // Strip any whitespace from the incoming number just in case
-      const cleanFrom = from.replace(/\s+/g, "");
-      let searchNumber = cleanFrom;
-      if (searchNumber.startsWith("91") && searchNumber.length === 12) {
-        searchNumber = searchNumber.substring(2);
-      }
-      
-      const contactList = await Contact.findAll();
-      const match = contactList.find(c => {
-         const cNum = c.mobileNo.replace(/\s+/g, "");
-         return cNum === searchNumber || cNum === cleanFrom;
-      });
+    const variants = phoneVariants(from);
+    const local10 = variants.find((v) => String(v).replace(/\D/g, "").length === 10) ||
+      String(from).replace(/\D/g, "").slice(-10);
 
-      if (match) {
-        name = match.name;
-      }
+    try {
+      const match = await Contact.findOne({
+        where: {
+          [Op.or]: [
+            { mobileNo: { [Op.in]: variants } },
+            ...(local10 ? [{ mobileNo: { [Op.like]: `%${local10}` } }] : []),
+          ],
+        },
+      });
+      if (match) name = match.name;
     } catch (err) {
       console.error("Error finding contact:", err);
     }
 
-    const allQueries = await Query.findAll();
-    let query = allQueries.find((q) => q.from.replace(/\s+/g, "") === from.replace(/\s+/g, "") && q.status !== "resolved");
+    // Indexed lookup instead of loading every query into memory
+    let query = await Query.findOne({
+      where: {
+        status: { [Op.ne]: "resolved" },
+        [Op.or]: [
+          { from: { [Op.in]: variants } },
+          ...(local10 ? [{ from: { [Op.like]: `%${local10}%` } }] : []),
+        ],
+      },
+      order: [["time", "DESC"]],
+    });
 
     const now = new Date();
 
     if (!query) {
-      const initials = name.split(" ").map((n) => n[0]).join("").toUpperCase();
+      const initials = name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase();
       query = await Query.create({
         from,
         name,
@@ -77,7 +93,7 @@ const handleIncomingWhatsApp = async (req, res) => {
       });
     } else {
       let isUrgent = false;
-      if (query.status === 'in_progress' && query.acceptedAt) {
+      if (query.status === "in_progress" && query.acceptedAt) {
         const diffMs = now.getTime() - new Date(query.acceptedAt).getTime();
         if (diffMs > 30 * 60 * 1000) {
           isUrgent = true;
@@ -85,11 +101,11 @@ const handleIncomingWhatsApp = async (req, res) => {
       }
 
       await query.update({
-        name, // Overwrite name to catch any Contact Book updates
+        name,
         message: previewText,
         time: now,
         unread: (query.unread || 0) + 1,
-        ...(isUrgent && { priority: 'urgent' })
+        ...(isUrgent && { priority: "urgent" }),
       });
     }
 
@@ -106,15 +122,16 @@ const handleIncomingWhatsApp = async (req, res) => {
 
     try {
       const queryData = query.toJSON();
-      // Mask the number for general broadcast
       queryData.from = maskNumber(queryData.from);
+      const msgData = msg.toJSON();
 
       getIO().emit("query:newIncoming", {
         queryId: query.id,
         query: queryData,
-        message: msg.toJSON(),
+        message: msgData,
       });
-      getIO().to(`query:${query.id}`).emit("message:new", msg.toJSON());
+      // Global so open chats update instantly without requiring query room join
+      getIO().emit("message:new", msgData);
     } catch (err) {
       console.error("Socket emit error:", err);
     }

@@ -74,14 +74,61 @@ const isAlponixSuccess = (data) => {
   return flag === "1" || msg.includes("dispatched successfully") || msg.includes("message sent");
 };
 
+const dispatchDirectWhatsAppInBackground = async ({ query, messageType, text, attachmentUrl, fileName, replyTo }) => {
+  const axios = require("axios");
+  const apiURL = process.env.WHATSAPP_API_URL;
+  const apiKey = process.env.WHATSAPP_API_KEY;
+  let recipient = query.from.replace(/\D/g, "");
+  if (recipient.length === 10) recipient = "91" + recipient;
+
+  const payload = buildAlponixWhatsAppPayload({
+    recipient,
+    messageType,
+    text,
+    attachmentUrl,
+    fileName,
+    replyTo,
+  });
+
+  console.log("📤 Alponix whatsapp-message payload:", JSON.stringify(payload, null, 2));
+  const apiRes = await axios.post(`${apiURL}/whatsapp-message`, payload, {
+    headers: {
+      "x-api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+  });
+  console.log(`✅ WhatsApp sent to ${recipient}:`, apiRes.data);
+  if (apiRes.data && String(apiRes.data.success) === "-1" && !isAlponixSuccess(apiRes.data)) {
+    throw new Error(apiRes.data.message || "Failed to send WhatsApp message");
+  }
+};
+
 // GET /api/queries/:queryId/messages
 const getMessages = async (req, res) => {
   try {
-    const messages = await Message.getByQueryId(req.params.queryId);
-    res.json({ success: true, messages });
+    const limit = parseInt(req.query.limit, 10) || 80;
+    const beforeCreatedAt = req.query.beforeCreatedAt || null;
+    const { messages, hasMore, nextCursor } = await Message.getByQueryIdPaginated(req.params.queryId, {
+      limit,
+      beforeCreatedAt,
+    });
+    res.json({ success: true, messages, hasMore, nextCursor });
   } catch (err) {
     res.status(500).json({ success: false, message: "Server error" });
   }
+};
+
+const emitMessageRealtime = (queryId, created, previewText, timeIso) => {
+  try {
+    const payload = created?.toJSON ? created.toJSON() : created;
+    // Global emit so every agent UI updates instantly (not only query room joiners)
+    getIO().emit("message:new", payload);
+    getIO().emit("query:updated", {
+      queryId,
+      lastMessage: previewText,
+      time: timeIso,
+    });
+  } catch {}
 };
 
 // POST /api/queries/:queryId/messages
@@ -104,71 +151,6 @@ const sendMessage = async (req, res) => {
         return res.status(403).json({ success: false, message: "This query is assigned to another agent" });
       }
     }
-
-    // --- WhatsApp API Integration (Alponix Direct Message) ---
-    const axios = require("axios");
-    const apiURL = process.env.WHATSAPP_API_URL;
-    const apiKey = process.env.WHATSAPP_API_KEY;
-
-    // Clean phone number: remove non-digits, add 91 if 10 digits
-    let recipient = query.from.replace(/\D/g, '');
-    if (recipient.length === 10) recipient = '91' + recipient;
-
-    try {
-      const payload = buildAlponixWhatsAppPayload({
-        recipient,
-        messageType,
-        text,
-        attachmentUrl,
-        fileName,
-        replyTo,
-      });
-
-      console.log("📤 Alponix whatsapp-message payload:", JSON.stringify(payload, null, 2));
-
-      const apiRes = await axios.post(`${apiURL}/whatsapp-message`, payload, {
-        headers: {
-          "x-api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-      });
-
-      console.log(`✅ WhatsApp sent to ${recipient}:`, apiRes.data);
-
-      if (apiRes.data && String(apiRes.data.success) === "-1" && !isAlponixSuccess(apiRes.data)) {
-        const errMsg = apiRes.data.message || "";
-        if (errMsg.toLowerCase().includes("session") || errMsg.toLowerCase().includes("active")) {
-          return res.status(400).json({
-            success: false,
-            errorType: "SESSION_EXPIRED",
-            message:
-              "No active session found for this number. Customer must message you first (24h window), or send an approved template.",
-          });
-        }
-        return res.status(400).json({
-          success: false,
-          message: errMsg || "Failed to send WhatsApp message",
-          data: apiRes.data.data,
-        });
-      }
-    } catch (apiErr) {
-      const errorData = apiErr.response?.data;
-      console.error("❌ WhatsApp Direct Message API Error:", errorData || apiErr.message);
-      
-      const errMsg = errorData?.message || apiErr.message || "";
-      if (errMsg.toLowerCase().includes("session") || errMsg.toLowerCase().includes("active")) {
-        return res.status(400).json({
-          success: false,
-          errorType: "SESSION_EXPIRED",
-          message: "No active session found for this number. Please send an approved WhatsApp Template to initiate the conversation."
-        });
-      }
-      return res.status(400).json({
-        success: false,
-        message: errMsg || "Failed to send WhatsApp message"
-      });
-    }
-    // --------------------------------------------------------
 
     const now = new Date();
     const storedText = attachmentUrl || text;
@@ -196,34 +178,46 @@ const sendMessage = async (req, res) => {
       { where: { id: queryId } }
     );
 
-    // Log activity
-    await ActivityLog.create({
-      agentId: agent.id,
-      agentName: agent.name,
-      action: "Sent a message",
-      customer: query.name,
-      queryId,
-      details: text,
-      time: created.time,
-      type: "message",
-      date: now.toISOString().split("T")[0],
-    });
-
-    // Update agent stats
-    const currentAgent = await Agent.findByPk(agent.id);
-    if (currentAgent) {
-      await currentAgent.update({
-        totalMessages: (currentAgent.totalMessages || 0) + 1,
-      });
-    }
-
-    // Broadcast to query room (real-time)
-    try {
-      getIO().to(`query:${queryId}`).emit("message:new", created);
-      getIO().emit("query:updated", { queryId, lastMessage: previewText, time: now.toISOString() });
-    } catch {}
-
+    // Broadcast immediately — do not wait for activity/stats (that made chats feel laggy)
+    emitMessageRealtime(queryId, created, previewText, now.toISOString());
     res.status(201).json({ success: true, message: "Message sent", data: created });
+
+    // Background external dispatch + bookkeeping (non-blocking)
+    Promise.resolve()
+      .then(async () => {
+        try {
+          await dispatchDirectWhatsAppInBackground({
+            query,
+            messageType,
+            text,
+            attachmentUrl,
+            fileName,
+            replyTo,
+          });
+        } catch (apiErr) {
+          const errorData = apiErr.response?.data;
+          console.error("❌ WhatsApp Direct Message API Error:", errorData || apiErr.message);
+        }
+
+        await ActivityLog.create({
+          agentId: agent.id,
+          agentName: agent.name,
+          action: "Sent a message",
+          customer: query.name,
+          queryId,
+          details: text,
+          time: created.time,
+          type: "message",
+          date: now.toISOString().split("T")[0],
+        });
+        const currentAgent = await Agent.findByPk(agent.id);
+        if (currentAgent) {
+          await currentAgent.update({
+            totalMessages: (currentAgent.totalMessages || 0) + 1,
+          });
+        }
+      })
+      .catch((err) => console.warn("Post-send bookkeeping failed:", err.message));
   } catch (err) {
     console.error("Send message error:", err);
     res.status(500).json({ success: false, message: "Server error" });
@@ -259,7 +253,7 @@ const receiveCustomerMessage = async (req, res) => {
     });
 
     try {
-      getIO().to(`query:${queryId}`).emit("message:new", created);
+      emitMessageRealtime(queryId, created, text, now.toISOString());
       getIO().emit("query:newIncoming", { queryId, message: created, name: query.name });
     } catch {}
 
@@ -476,34 +470,30 @@ const sendWhatsAppTemplateMessage = async (req, res) => {
       { where: { id: queryId } }
     );
 
-    // Log activity
-    await ActivityLog.create({
-      agentId: agent.id,
-      agentName: agent.name,
-      action: "Sent template",
-      customer: query.name,
-      queryId,
-      details: `Template: ${templateName}`,
-      time: created.time,
-      type: "message",
-      date: now.toISOString().split("T")[0],
-    });
-
-    // Update agent stats
-    const currentAgent = await Agent.findByPk(agent.id);
-    if (currentAgent) {
-      await currentAgent.update({
-        totalMessages: (currentAgent.totalMessages || 0) + 1,
-      });
-    }
-
-    // Broadcast to query room (real-time)
-    try {
-      getIO().to(`query:${queryId}`).emit("message:new", created);
-      getIO().emit("query:updated", { queryId, lastMessage: displayText, time: now.toISOString() });
-    } catch {}
-
+    emitMessageRealtime(queryId, created, displayText, now.toISOString());
     res.json({ success: true, message: "Template message sent successfully!", data: created });
+
+    Promise.resolve()
+      .then(async () => {
+        await ActivityLog.create({
+          agentId: agent.id,
+          agentName: agent.name,
+          action: "Sent template",
+          customer: query.name,
+          queryId,
+          details: `Template: ${templateName}`,
+          time: created.time,
+          type: "message",
+          date: now.toISOString().split("T")[0],
+        });
+        const currentAgent = await Agent.findByPk(agent.id);
+        if (currentAgent) {
+          await currentAgent.update({
+            totalMessages: (currentAgent.totalMessages || 0) + 1,
+          });
+        }
+      })
+      .catch((err) => console.warn("Post-template bookkeeping failed:", err.message));
   } catch (err) {
     console.error("Send template error:", err);
     res.status(500).json({ success: false, message: "Server error" });

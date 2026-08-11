@@ -94,6 +94,7 @@ const runSchemaPatches = async () => {
   // ── Speed Indexes (safe to re-run, IF NOT EXISTS guard) ──────────
   const indexes = [
     { name: "idx_messages_queryId",  sql: "CREATE INDEX idx_messages_queryId  ON Messages(queryId)" },
+    { name: "idx_messages_queryId_createdAt", sql: "CREATE INDEX idx_messages_queryId_createdAt ON Messages(queryId, createdAt)" },
     { name: "idx_messages_sender",   sql: "CREATE INDEX idx_messages_sender   ON Messages(sender)" },
     { name: "idx_messages_agentId",  sql: "CREATE INDEX idx_messages_agentId  ON Messages(agentId)" },
     { name: "idx_queries_from",      sql: "CREATE INDEX idx_queries_from      ON Queries(`from`)" },

@@ -1,4 +1,4 @@
-const { DataTypes } = require('sequelize');
+const { DataTypes, Op } = require('sequelize');
 const { sequelize } = require('../config/db');
 
 const Message = sequelize.define('Message', {
@@ -66,25 +66,57 @@ const Message = sequelize.define('Message', {
   timestamps: true
 });
 
-// Helper methods 
-Message.getByQueryId = async (queryId) => {
-  // Lazily load Query model to prevent circular dependency
+const getRelatedQueryIds = async (queryId, includeSiblings) => {
   const Query = require('./Query');
-  const currentQuery = await Query.findByPk(queryId);
   let queryIds = [queryId];
-  
-  if (currentQuery) {
-    const siblingQueries = await Query.findAll({
-      where: { from: currentQuery.from },
-      attributes: ['id']
-    });
-    queryIds = siblingQueries.map(q => q.id);
+
+  if (includeSiblings) {
+    const currentQuery = await Query.findByPk(queryId, { attributes: ['id', 'from'] });
+    if (currentQuery?.from) {
+      const siblingQueries = await Query.findAll({
+        where: { from: currentQuery.from },
+        attributes: ['id'],
+      });
+      queryIds = siblingQueries.map((q) => q.id);
+    }
+  }
+  return queryIds;
+};
+
+// Strict cursor pagination for heavy threads.
+Message.getByQueryIdPaginated = async (
+  queryId,
+  { limit = 80, includeSiblings = true, beforeCreatedAt = null } = {}
+) => {
+  const queryIds = await getRelatedQueryIds(queryId, includeSiblings);
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 80, 1), 300);
+  const where = { queryId: queryIds };
+  if (beforeCreatedAt) {
+    where.createdAt = { [Op.lt]: new Date(beforeCreatedAt) };
   }
 
-  return await Message.findAll({ 
-    where: { queryId: queryIds },
-    order: [['createdAt', 'ASC']]
+  const rows = await Message.findAll({
+    where,
+    order: [['createdAt', 'DESC'], ['id', 'DESC']],
+    limit: safeLimit + 1,
   });
+
+  const hasMore = rows.length > safeLimit;
+  const trimmed = hasMore ? rows.slice(0, safeLimit) : rows;
+  const messages = trimmed.reverse();
+  const oldest = messages[0];
+
+  return {
+    messages,
+    hasMore,
+    nextCursor: oldest ? oldest.createdAt : null,
+  };
+};
+
+// Helper methods — load recent messages only (heavy chats must stay fast)
+Message.getByQueryId = async (queryId, options = {}) => {
+  const { messages } = await Message.getByQueryIdPaginated(queryId, options);
+  return messages;
 };
 
 Message.getSentByAgent = async (agentId) => {

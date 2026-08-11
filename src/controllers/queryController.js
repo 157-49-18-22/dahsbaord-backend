@@ -39,16 +39,17 @@ const getQueries = async (req, res) => {
 
     const isAdmin = req.agent && req.agent.role && req.agent.role.toLowerCase().includes("admin");
     
-    result.data = await Promise.all(result.data.map(async (q) => {
+    // Do NOT attach full message history here — it makes list load very slow on heavy chats.
+    // ChatWindow / AllChat fetch messages only when a chat is opened.
+    result.data = result.data.map((q) => {
       const query = q.toJSON ? q.toJSON() : q;
-      query.messages = await Message.getByQueryId(query.id);
-      // Normalize null/undefined priority — old DB rows may not have a value set
+      query.messages = [];
       if (!query.priority) query.priority = 'medium';
       if (!isAdmin) {
         query.from = maskNumber(query.from);
       }
       return query;
-    }));
+    });
 
     res.json({ success: true, ...result });
   } catch (err) {
@@ -62,8 +63,7 @@ const getQueryById = async (req, res) => {
     const queryObj = await Query.getById(req.params.id);
     if (!queryObj) return res.status(404).json({ success: false, message: "Query not found" });
     
-    // Attach messages
-    const messages = await Message.getByQueryId(queryObj.id);
+    const messages = await Message.getByQueryId(queryObj.id, { limit: 80 });
     const query = queryObj.toJSON();
     
     const isAdmin = req.agent && req.agent.role && req.agent.role.toLowerCase().includes("admin");
