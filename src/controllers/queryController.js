@@ -80,7 +80,7 @@ const getQueryById = async (req, res) => {
 // POST /api/queries
 const createQuery = async (req, res) => {
   try {
-    const { from, name, message, priority = "medium" } = req.body;
+    const { from, name, message, priority = "medium", assignedTo = null, isForwarded = false } = req.body;
     const initials = (name || "CX").split(" ").map((n) => n[0]).join("").toUpperCase();
     const now = new Date();
 
@@ -91,7 +91,8 @@ const createQuery = async (req, res) => {
       message,
       time: now,
       status: "open",
-      assignedTo: null,
+      assignedTo: assignedTo || null,
+      assignedToGroup: null,
       unread: 1,
       priority,
     });
@@ -107,11 +108,17 @@ const createQuery = async (req, res) => {
       read: false,
     });
 
+    const queryJson = created.toJSON();
     try {
-      getIO().emit("query:new", { ...created.toJSON(), messages: [msg] });
+      // Emit to all — AppContext will filter by assignedTo/status
+      getIO().emit("query:new", { ...queryJson, messages: [msg] });
+      // Also emit targeted assignment event so target agent's pool refreshes
+      if (assignedTo) {
+        getIO().emit("query:assigned", { queryId: created.id, agentId: assignedTo });
+      }
     } catch {}
 
-    res.status(201).json({ success: true, message: "Query created", query: created });
+    res.status(201).json({ success: true, message: "Query created", query: queryJson });
   } catch (err) {
     console.error("Create query error:", err);
     res.status(500).json({ success: false, message: "Server error" });
