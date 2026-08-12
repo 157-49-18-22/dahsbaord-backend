@@ -33,7 +33,8 @@ const handleIncomingWhatsApp = async (req, res) => {
 
     const from = body.phone_number;
     const messageType = body.message_type || "text";
-    const text = body.message || "[Media message]";
+    const rawText = body.message || "[Media message]";
+    const text = String(rawText).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const previewText = toPreviewText(messageType, text);
     let name = body.name || from;
 
@@ -100,14 +101,22 @@ const handleIncomingWhatsApp = async (req, res) => {
         }
       }
 
+      // Customer replied again — return to shared Query Pool for ALL agents
+      // (saved contact or not, everyone must see it in Open Query Pool)
       await query.update({
         name,
         message: previewText,
         time: now,
         unread: (query.unread || 0) + 1,
+        assignedTo: null,
+        assignedToGroup: null,
+        status: "open",
+        acceptedAt: null,
         ...(isUrgent && { priority: "urgent" }),
       });
     }
+
+    await query.reload();
 
     const msg = await Message.create({
       queryId: query.id,
@@ -129,6 +138,12 @@ const handleIncomingWhatsApp = async (req, res) => {
         queryId: query.id,
         query: queryData,
         message: msgData,
+      });
+      getIO().emit("query:returnedToPool", {
+        queryId: query.id,
+        assignedTo: null,
+        assignedToGroup: null,
+        status: "open",
       });
       // Global so open chats update instantly without requiring query room join
       getIO().emit("message:new", msgData);
