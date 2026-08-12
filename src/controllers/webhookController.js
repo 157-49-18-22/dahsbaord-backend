@@ -62,9 +62,11 @@ const handleIncomingWhatsApp = async (req, res) => {
     }
 
     // Indexed lookup instead of loading every query into memory
+    // Ignore internal "Mapping" tasks when routing incoming customer replies
     let query = await Query.findOne({
       where: {
         status: { [Op.ne]: "resolved" },
+        name: { [Op.notLike]: "Mapping:%" },
         [Op.or]: [
           { from: { [Op.in]: variants } },
           ...(local10 ? [{ from: { [Op.like]: `%${local10}%` } }] : []),
