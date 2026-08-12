@@ -71,10 +71,14 @@ const getRelatedQueryIds = async (queryId, includeSiblings) => {
   let queryIds = [queryId];
 
   if (includeSiblings) {
-    const currentQuery = await Query.findByPk(queryId, { attributes: ['id', 'from'] });
-    if (currentQuery?.from) {
+    const currentQuery = await Query.findByPk(queryId, { attributes: ['id', 'from', 'name'] });
+    // Prevent forwarded tasks (Mapping: ...) from linking with the original customer's chat history
+    if (currentQuery?.from && currentQuery.name && !currentQuery.name.startsWith('Mapping:')) {
       const siblingQueries = await Query.findAll({
-        where: { from: currentQuery.from },
+        where: { 
+          from: currentQuery.from,
+          name: { [Op.notLike]: 'Mapping:%' } 
+        },
         attributes: ['id'],
       });
       queryIds = siblingQueries.map((q) => q.id);
