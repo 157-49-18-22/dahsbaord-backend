@@ -101,22 +101,34 @@ const handleIncomingWhatsApp = async (req, res) => {
         }
       }
 
-      // Customer replied again — return to shared Query Pool for ALL agents
-      // (saved contact or not, everyone must see it in Open Query Pool)
-      await query.update({
+      const wasAssignedToAgent = Boolean(query.assignedTo);
+      const wasInGroupPool = Boolean(query.assignedToGroup);
+
+      const updatePayload = {
         name,
         message: previewText,
         time: now,
         unread: (query.unread || 0) + 1,
-        assignedTo: null,
-        assignedToGroup: null,
-        status: "open",
-        acceptedAt: null,
         ...(isUrgent && { priority: "urgent" }),
-      });
+      };
+
+      if (wasAssignedToAgent) {
+        // Agent already accepted — keep ownership, no re-accept needed
+        updatePayload.status = "in_progress";
+      } else if (!wasInGroupPool) {
+        // Truly unassigned — stays in Open Query Pool for all agents
+        updatePayload.assignedTo = null;
+        updatePayload.assignedToGroup = null;
+        updatePayload.status = "open";
+        updatePayload.acceptedAt = null;
+      }
+      // assignedToGroup only: keep department pool assignment unchanged
+
+      await query.update(updatePayload);
     }
 
     await query.reload();
+    const returnedToOpenPool = !query.assignedTo && !query.assignedToGroup;
 
     const msg = await Message.create({
       queryId: query.id,
@@ -139,12 +151,14 @@ const handleIncomingWhatsApp = async (req, res) => {
         query: queryData,
         message: msgData,
       });
-      getIO().emit("query:returnedToPool", {
-        queryId: query.id,
-        assignedTo: null,
-        assignedToGroup: null,
-        status: "open",
-      });
+      if (returnedToOpenPool) {
+        getIO().emit("query:returnedToPool", {
+          queryId: query.id,
+          assignedTo: null,
+          assignedToGroup: null,
+          status: "open",
+        });
+      }
       // Global so open chats update instantly without requiring query room join
       getIO().emit("message:new", msgData);
     } catch (err) {
